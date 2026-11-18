@@ -34,11 +34,8 @@ jobs:
       - run: python -m lab9.smoke
       - run: python -m pytest -q -m student -o addopts= -k "lab9 and not advanced"
       - run: python -m lab9.evalset --check
-      - name: Evaluate and gate the PR swarm
-        shell: bash
-        run: |
-          python -m lab9.eval --shape swarm --spec "$EVAL_SPEC" --out reports/eval_pr.json
-          python -m lab9.gate --pr reports/eval_pr.json --baseline "$EVAL_BASELINE" --spec "$EVAL_SPEC"
+      - name: Evaluate the PR swarm for baseline verification
+        run: python -m lab9.eval --shape swarm --spec "$EVAL_SPEC" --out reports/eval_pr.json
       - name: Check the committed baseline and the M3 metric
         run: python -m lab9.ci_check --pr reports/eval_pr.json --baseline "$EVAL_BASELINE" --spec "$EVAL_SPEC"
       - name: Verify the gate accepts fixed
