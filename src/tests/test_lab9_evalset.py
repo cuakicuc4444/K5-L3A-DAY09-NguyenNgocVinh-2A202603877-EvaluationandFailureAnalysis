@@ -8,6 +8,8 @@ import sys
 
 import pytest
 
+from lab9.evalset import sha12
+
 
 @pytest.fixture
 def evalset_cli(tmp_path):
@@ -26,6 +28,15 @@ def evalset_cli(tmp_path):
         )
 
     return run_evalset
+
+
+def test_sha12_is_stable_across_line_endings(tmp_path):
+    lf_path = tmp_path / "lf.jsonl"
+    crlf_path = tmp_path / "crlf.jsonl"
+    lf_path.write_bytes(b'{"item":"one"}\n{"item":"two"}\n')
+    crlf_path.write_bytes(b'{"item":"one"}\r\n{"item":"two"}\r\n')
+
+    assert sha12(lf_path) == sha12(crlf_path)
 
 
 def test_build_writes_items_and_labels_without_checking_tags(tmp_path, evalset_cli):
