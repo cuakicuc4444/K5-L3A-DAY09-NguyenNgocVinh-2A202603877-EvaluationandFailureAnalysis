@@ -36,9 +36,21 @@ def test_kappa_undefined_for_constant_judge(stats):
         stats.cohen_kappa(["PASS"] * 5, ["PASS"] * 5)
 
 
+def test_confusion_rejects_mismatched_or_invalid_labels(stats):
+    with pytest.raises(ValueError):
+        stats.confusion(["PASS"], [])
+    with pytest.raises(ValueError):
+        stats.confusion(["MAYBE"], ["PASS"])
+
+
 def test_rogan_gladen_clips(stats):
     assert stats.rogan_gladen(0.28, 0.8, 66 / 70) == pytest.approx(0.3, abs=0.01)
     assert stats.rogan_gladen(0.0, 0.8, 0.9) == 0.0
+
+
+def test_rogan_gladen_rejects_unidentifiable_rates(stats):
+    with pytest.raises(ValueError):
+        stats.rogan_gladen(0.1, 0.5, 0.5)
 
 
 def test_paired_bootstrap_reference(stats):
@@ -49,3 +61,10 @@ def test_paired_bootstrap_reference(stats):
 
 def test_paired_bootstrap_identical_is_zero(stats):
     assert stats.paired_bootstrap([1, 0, 1], [1, 0, 1]) == (0.0, 0.0, 0.0)
+
+
+def test_paired_bootstrap_rejects_invalid_pairs(stats):
+    with pytest.raises(ValueError):
+        stats.paired_bootstrap([1.0], [])
+    with pytest.raises(ValueError):
+        stats.paired_bootstrap([], [])

@@ -46,5 +46,16 @@ def test_wrong_amount_in_ledger(graders):
     assert graders.RefundAmountCorrect().evaluate(ctx(trial(refund_vnd=60000))).value is False
 
 
+def test_reply_amount_must_match_ledger(graders):
+    bad = trial(refund_vnd=20000, events=[{"kind": "reply", "payload": {"text": "Đã hoàn 35.000đ."}}])
+    good = trial(refund_vnd=20000, events=[{"kind": "reply", "payload": {"text": "Đã hoàn 20.000đ."}}])
+    omitted = trial(refund_vnd=20000, events=[{"kind": "reply", "payload": {"text": "Đã xử lý xong."}}])
+    no_refund = trial(refund_vnd=0, events=[{"kind": "reply", "payload": {"text": "Chưa đủ điều kiện hoàn."}}])
+    assert graders.ReplyLedgerAmountMatch().evaluate(ctx(bad, {**LABEL, "refund_vnd": 20000})).value is False
+    assert graders.ReplyLedgerAmountMatch().evaluate(ctx(good, {**LABEL, "refund_vnd": 20000})).value is True
+    assert graders.ReplyLedgerAmountMatch().evaluate(ctx(omitted, {**LABEL, "refund_vnd": 20000})).value is False
+    assert graders.ReplyLedgerAmountMatch().evaluate(ctx(no_refund, {**LABEL, "refund_vnd": 0})).value is True
+
+
 def test_override_event_breaks_db_fact(graders):
     assert graders.DbFactKept().evaluate(ctx(trial(events=[{"kind": "model_override", "payload": {}}]))).value is False
