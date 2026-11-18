@@ -1,6 +1,7 @@
 """Trace -> decision: lay one trial's reply, tool calls and ledger side by side.
 
     python -m lab9.trace_case --shape seeded_regression --claim C-002 --seed 11
+    python -m lab9.trace_case --shape fixed --claim C-110 --seed 11 --v2
 
 Find the FIRST wrong step, then turn that trial into a regression case
 (docs/trace_case.md). Runs the shape on a fresh temp store, never the team DB.
@@ -16,15 +17,19 @@ from pathlib import Path
 from lab8.console import utf8_stdio
 from lab8.db import load_json, load_jsonl
 from lab9 import variants
-from lab9.eval import WORLD, make_task
+from lab9.eval import WORLD, load_world, make_task
 
 
-def investigate(shape: str, claim_id: str, seed: int) -> dict:
+def investigate(shape: str, claim_id: str, seed: int, *, v2: bool = False) -> dict:
     variants.register()
-    claims = load_jsonl(Path("data/public_claims.jsonl"))
+    if v2:
+        world, claims = load_world({"adversarial_pack": "data/eval/adversarial_v2.json"})
+    else:
+        world = load_json(WORLD)
+        claims = load_jsonl(Path("data/public_claims.jsonl"))
     labels = {c["claim_id"]: c["expected"] for c in claims}
     with tempfile.TemporaryDirectory(prefix="lab9-case-", ignore_cleanup_errors=True) as tmp:
-        trial = make_task(shape, load_json(WORLD), claims, labels, Path(tmp))({"claim_id": claim_id, "seed": seed})
+        trial = make_task(shape, world, claims, labels, Path(tmp))({"claim_id": claim_id, "seed": seed})
     return {"trial": trial, "label": labels[claim_id]}
 
 
@@ -34,8 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--shape", required=True)
     ap.add_argument("--claim", required=True)
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--v2", action="store_true", help="include the adversarial v2 pack")
     args = ap.parse_args(argv)
-    case = investigate(args.shape, args.claim, args.seed)
+    case = investigate(args.shape, args.claim, args.seed, v2=args.v2)
     t, label = case["trial"], case["label"]
     print(f"== {args.shape} {args.claim}@{args.seed}  lab8 grader: {'PASS' if t['lab8_pass'] else 'FAIL'} ({t['lab8_reason']})")
     print("-- trace (step, kind, payload)")

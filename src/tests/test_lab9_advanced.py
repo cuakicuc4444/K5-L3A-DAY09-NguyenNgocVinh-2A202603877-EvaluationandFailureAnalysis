@@ -26,9 +26,10 @@ def test_pass_hat_k(stats, n, c, k, want):
 
 
 def test_pass_k_rejects_bad_args(stats):
-    for args in [(5, 6, 1), (5, 2, 0), (3, 1, 4)]:
-        with pytest.raises(ValueError):
-            stats.pass_at_k(*args)
+    for fn in (stats.pass_at_k, stats.pass_hat_k):
+        for args in [(0, 0, 1), (5, -1, 1), (5, 6, 1), (5, 2, 0), (3, 1, 4), (5, 2, 1.0)]:
+            with pytest.raises(ValueError):
+                fn(*args)
 
 
 def _report(rows, metrics, items=4, seeds=(1, 2)):
@@ -52,6 +53,37 @@ def test_integrity_flags_nan_and_dropped_rows():
     dropped = _report(copy.deepcopy(ROWS[:-1]), {"pass_rate": 1.0})
     assert gate.integrity_check(dropped, base, SPEC)
 
+    infinite = _report(copy.deepcopy(ROWS), {"pass_rate": float("inf")})
+    assert gate.integrity_check(infinite, base, SPEC)
+
+
+def test_integrity_flags_duplicate_pairs_and_missing_grader_scores():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    duplicate = copy.deepcopy(ROWS)
+    duplicate[-1] = copy.deepcopy(duplicate[0])
+    assert gate.integrity_check(_report(duplicate, {"pass_rate": 1.0}), base, SPEC)
+
+    missing_score = copy.deepcopy(ROWS)
+    missing_score[0]["pass_rate"] = None
+    assert gate.integrity_check(_report(missing_score, {"pass_rate": 1.0}), base, SPEC)
+
+    failed_evaluator = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    failed_evaluator["evaluator_failures"] = ["E-000@1:grader:error"]
+    assert gate.integrity_check(failed_evaluator, base, SPEC)
+
+
+def test_integrity_flags_slice_relabeling():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    relabeled = copy.deepcopy(ROWS)
+    for row in relabeled:
+        if row["item_id"] == "E-000":
+            row["slices"] = []
+    assert gate.integrity_check(_report(relabeled, {"pass_rate": 1.0}), base, SPEC)
+
 
 def test_integrity_flags_loosened_spec():
     from lab9 import gate
@@ -61,6 +93,20 @@ def test_integrity_flags_loosened_spec():
     loose["metrics"][0]["threshold"]["min"] = 0.5
     assert gate.integrity_check(base, base, loose, SPEC)
     assert gate.integrity_check(base, base, SPEC, SPEC) == []
+
+
+def test_integrity_flags_removed_slice_and_dropped_no_significant_drop():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    base_spec = dict(SPEC, slices=[{"name": "denial", "metric": "pass_rate", "min": 0.8,
+                                    "no_significant_drop": True, "blocking": True}])
+    removed = dict(SPEC, slices=[])
+    assert gate.integrity_check(base, base, removed, base_spec)
+
+    loosened = copy.deepcopy(base_spec)
+    loosened["slices"][0].pop("no_significant_drop")
+    assert gate.integrity_check(base, base, loosened, base_spec)
 
 
 def test_slice_check_blocks_a_slice_below_floor():
@@ -74,3 +120,32 @@ def test_slice_check_blocks_a_slice_below_floor():
     spec = dict(SPEC, slices=[{"name": "denial", "metric": "pass_rate", "min": 0.9, "blocking": True}])
     blocked, _ = gate.slice_check(_report(rows, {"pass_rate": 0.75}), base, spec)
     assert blocked == ["slice:denial/pass_rate"]
+
+
+def test_slice_check_blocks_significant_drop_above_floor():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    rows = copy.deepcopy(ROWS)
+    for row in rows:
+        if "denial" in row["slices"] and row["seed"] == 1:
+            row["pass_rate"] = False
+    spec = dict(SPEC, bootstrap={"n_resamples": 100, "rng": 1}, slices=[
+        {"name": "denial", "metric": "pass_rate", "min": 0.4,
+         "no_significant_drop": True, "blocking": True}
+    ])
+    blocked, lines = gate.slice_check(_report(rows, {"pass_rate": 0.75}), base, spec)
+    assert blocked == ["slice:denial/pass_rate"]
+    assert "CI" in lines[0]
+
+
+def test_slice_check_blocks_when_slice_has_no_rows():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    spec = dict(SPEC, slices=[
+        {"name": "missing", "metric": "pass_rate", "min": 0.8, "blocking": True}
+    ])
+    blocked, lines = gate.slice_check(base, base, spec)
+    assert blocked == ["slice:missing/pass_rate"]
+    assert "MISSING" in lines[0]
